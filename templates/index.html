@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sensor Virtual — {{ city }}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-moment/1.0.1/chartjs-adapter-moment.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg:       #f0f4f8;
+    --panel:    #ffffff;
+    --border:   #d0dce8;
+    --accent:   #0077cc;
+    --accent2:  #e05a00;
+    --accent3:  #2a9d00;
+    --text:     #1a2b3c;
+    --muted:    #6b88a0;
+    --forecast: rgba(224,90,0,0.10);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── subtle grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='1' height='1' fill='%23aabbcc' opacity='0.08'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 2rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #ffffff 0%, #e8f0f8 100%);
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 1rem;
+  }
+
+  .logo-icon {
+    width: 40px; height: 40px;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--accent);
+    font-size: 1rem;
+    position: relative;
+    box-shadow: 0 0 12px rgba(0,119,204,0.2);
+  }
+  .logo-icon::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1px solid rgba(0,212,255,0.3);
+    border-radius: 4px;
+  }
+
+  .logo-text h1 {
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #1a2b3c;
+  }
+  .logo-text p {
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex; align-items: center; gap: 1.5rem;
+  }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .dot.live {
+    background: var(--accent3);
+    box-shadow: 0 0 8px var(--accent3);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; } 50% { opacity:0.4; }
+  }
+
+  #clock {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+  }
+
+  /* ── main layout ── */
+  main {
+    padding: 1.5rem 2rem;
+    display: grid;
+    grid-template-rows: auto auto auto;
+    gap: 1.5rem;
+  }
+
+  /* ── KPI cards ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+  }
+
+  .kpi {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem 1.4rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .kpi:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,119,204,0.12); }
+  .kpi::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .kpi.temp::before  { background: linear-gradient(90deg, var(--accent), transparent); }
+  .kpi.hum::before   { background: linear-gradient(90deg, var(--accent2), transparent); }
+  .kpi.press::before { background: linear-gradient(90deg, var(--accent3), transparent); }
+  .kpi.wind::before  { background: linear-gradient(90deg, #c084fc, transparent); }
+
+  .kpi-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    margin-bottom: 0.6rem;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .kpi-value {
+    font-size: 2.2rem;
+    font-weight: 800;
+    line-height: 1;
+    color: #1a2b3c;
+  }
+  .kpi-unit {
+    font-size: 0.9rem;
+    color: var(--muted);
+    font-weight: 300;
+    margin-left: 0.2rem;
+  }
+  .kpi-sub {
+    margin-top: 0.5rem;
+    font-size: 0.7rem;
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .kpi-icon {
+    position: absolute;
+    right: 1rem; top: 50%;
+    transform: translateY(-50%);
+    font-size: 2.5rem;
+    opacity: 0.06;
+  }
+
+  /* ── description card ── */
+  .desc-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+  }
+  #weather-icon { width: 48px; height: 48px; }
+  #weather-desc {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1a2b3c;
+  }
+  #weather-city {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  .model-badge {
+    margin-left: auto;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .model-badge.ready {
+    border-color: var(--accent3);
+    color: var(--accent3);
+    box-shadow: 0 0 8px rgba(42,157,0,0.2);
+  }
+
+  /* ── charts ── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 900px) {
+    .charts-grid { grid-template-columns: 1fr; }
+  }
+
+  .chart-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .chart-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    margin-bottom: 0.8rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .legend-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── footer ── */
+  footer {
+    text-align: center;
+    padding: 1rem;
+    font-size: 0.65rem;
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.1em;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">VS</div>
+    <div class="logo-text">
+      <h1>Sensor Virtual</h1>
+      <p>Regressão Linear · OpenWeather</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="dot" id="live-dot"></div>
+      <span id="live-label">AGUARDANDO</span>
+    </div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<main>
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi temp">
+      <div class="kpi-label">Temperatura</div>
+      <div class="kpi-value"><span id="v-temp">--</span><span class="kpi-unit">°C</span></div>
+      <div class="kpi-sub" id="s-temp">aguardando leitura...</div>
+      <div class="kpi-icon">🌡</div>
+    </div>
+    <div class="kpi hum">
+      <div class="kpi-label">Umidade</div>
+      <div class="kpi-value"><span id="v-hum">--</span><span class="kpi-unit">%</span></div>
+      <div class="kpi-sub" id="s-hum">aguardando leitura...</div>
+      <div class="kpi-icon">💧</div>
+    </div>
+    <div class="kpi press">
+      <div class="kpi-label">Pressão</div>
+      <div class="kpi-value"><span id="v-press">--</span><span class="kpi-unit">hPa</span></div>
+      <div class="kpi-sub">pressão atmosférica</div>
+      <div class="kpi-icon">📊</div>
+    </div>
+    <div class="kpi wind">
+      <div class="kpi-label">Vento</div>
+      <div class="kpi-value"><span id="v-wind">--</span><span class="kpi-unit">m/s</span></div>
+      <div class="kpi-sub">velocidade superficial</div>
+      <div class="kpi-icon">💨</div>
+    </div>
+  </div>
+
+  <!-- Description bar -->
+  <div class="desc-card">
+    <img id="weather-icon" src="" alt="">
+    <div>
+      <div id="weather-desc">Carregando dados...</div>
+      <div id="weather-city">{{ city }} · OpenWeatherMap</div>
+    </div>
+    <div class="model-badge" id="model-badge">MODELO: SEM DADOS</div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title">
+        <span class="legend-dot" style="background:#00d4ff"></span> Temperatura real
+        <span class="legend-dot" style="background:#ff6b35; margin-left:0.5rem"></span> Previsão (sensor virtual)
+      </div>
+      <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">
+        <span class="legend-dot" style="background:#7fff6b"></span> Umidade real
+        <span class="legend-dot" style="background:#ff6b35; margin-left:0.5rem"></span> Previsão (sensor virtual)
+      </div>
+      <div class="chart-wrap"><canvas id="chart-hum"></canvas></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  SENSOR VIRTUAL · REGRESSÃO LINEAR · DADOS: OPENWEATHERMAP · ATUALIZAÇÃO A CADA {{ interval }}s
+</footer>
+
+<script>
+const INTERVAL_MS = {{ interval }} * 1000;
+
+// ── Clock ──────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('pt-BR');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Chart factory ──────────────────────────────
+function makeChart(id, label, color, unit) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Real',
+          data: [],
+          borderColor: color,
+          backgroundColor: color + '18',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: color,
+          tension: 0.35,
+          fill: true,
+        },
+        {
+          label: 'Previsão',
+          data: [],
+          borderColor: '#ff6b35',
+          backgroundColor: 'rgba(255,107,53,0.07)',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          pointRadius: 4,
+          pointStyle: 'triangle',
+          pointBackgroundColor: '#ff6b35',
+          tension: 0.35,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'HH:mm:ss', displayFormats: { second:'HH:mm:ss', minute:'HH:mm' } },
+          grid: { color: '#1a2d45' },
+          ticks: { color: '#4a6580', maxTicksLimit: 6, font: { family: "'Share Tech Mono'" } }
+        },
+        y: {
+          grid: { color: '#1a2d45' },
+          ticks: {
+            color: '#4a6580',
+            font: { family: "'Share Tech Mono'" },
+            callback: v => v.toFixed(1) + ' ' + unit
+          }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0d1520',
+          borderColor: '#1a2d45',
+          borderWidth: 1,
+          titleColor: '#c8dff0',
+          bodyColor: '#4a6580',
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} ${unit}`
+          }
+        }
+      }
+    }
+  });
+}
+
+const chartTemp = makeChart('chart-temp', 'Temperatura', '#00d4ff', '°C');
+const chartHum  = makeChart('chart-hum',  'Umidade',     '#7fff6b', '%');
+
+// ── Fetch & update ─────────────────────────────
+async function fetchData() {
+  try {
+    const res = await fetch('/api/data');
+    const d   = await res.json();
+
+    // KPIs
+    if (d.last && d.last.temperature !== undefined) {
+      document.getElementById('v-temp').textContent  = d.last.temperature;
+      document.getElementById('v-hum').textContent   = d.last.humidity;
+      document.getElementById('v-press').textContent = d.last.pressure;
+      document.getElementById('v-wind').textContent  = d.last.wind_speed;
+
+      // forecast next step
+      if (d.forecast.temperature.length > 0) {
+        document.getElementById('s-temp').textContent =
+          `→ prev. próx.: ${d.forecast.temperature[0]}°C`;
+        document.getElementById('s-hum').textContent =
+          `→ prev. próx.: ${d.forecast.humidity[0]}%`;
+      }
+
+      // weather desc
+      document.getElementById('weather-desc').textContent = d.last.description || '';
+      document.getElementById('weather-city').textContent =
+        (d.last.city || '{{ city }}') + ' · OpenWeatherMap';
+      if (d.last.icon) {
+        document.getElementById('weather-icon').src =
+          `https://openweathermap.org/img/wn/${d.last.icon}@2x.png`;
+      }
+
+      // live dot
+      document.getElementById('live-dot').classList.add('live');
+      document.getElementById('live-label').textContent = 'AO VIVO';
+    }
+
+    // model badge
+    const badge = document.getElementById('model-badge');
+    if (d.model.trained) {
+      badge.textContent = `MODELO ATIVO · ${d.model.points} pts`;
+      badge.classList.add('ready');
+    } else {
+      badge.textContent = `COLETANDO · ${d.model.points}/3 pts`;
+      badge.classList.remove('ready');
+    }
+
+    // Charts — build time-indexed data
+    const hist = d.history;
+    const realTemp = hist.timestamps.map((t, i) => ({ x: t, y: hist.temperature[i] }));
+    const realHum  = hist.timestamps.map((t, i) => ({ x: t, y: hist.humidity[i] }));
+
+    const fcastTemp = d.forecast.timestamps.map((t, i) => ({ x: t, y: d.forecast.temperature[i] }));
+    const fcastHum  = d.forecast.timestamps.map((t, i) => ({ x: t, y: d.forecast.humidity[i] }));
+
+    chartTemp.data.datasets[0].data = realTemp;
+    chartTemp.data.datasets[1].data = fcastTemp;
+    chartTemp.update('none');
+
+    chartHum.data.datasets[0].data = realHum;
+    chartHum.data.datasets[1].data = fcastHum;
+    chartHum.update('none');
+
+  } catch (e) {
+    console.error('Erro ao buscar dados:', e);
+  }
+}
+
+fetchData();
+setInterval(fetchData, Math.min(INTERVAL_MS, 10000)); // UI atualiza a cada 10s no máximo
+</script>
+</body>
+</html>
